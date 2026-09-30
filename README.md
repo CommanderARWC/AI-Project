@@ -145,11 +145,11 @@ Because the split seeds differ, the two models were not tested on exactly the sa
 
 ---
 
-## 5. Results
+## 4. Results
 
 All numbers are from **one training run** on a 7,425-example test set. Standard error on overall accuracy is about 0.4 percentage points.
 
-### 5.1 Overall accuracy
+### 4.1 Overall accuracy
 
 | Model | Best validation accuracy | Test accuracy |
 |---|---:|---:|
@@ -158,7 +158,7 @@ All numbers are from **one training run** on a 7,425-example test set. Standard 
 
 Improvement on the same dataset: **+8.99 percentage points**.
 
-### 5.2 Per-class accuracy (computed from the confusion matrices)
+### 4.2 Per-class accuracy (computed from the confusion matrices)
 
 | Class | Given CNN | Proposed | Change |
 |---|---:|---:|---:|
@@ -174,7 +174,7 @@ Improvement on the same dataset: **+8.99 percentage points**.
 
 **The whole improvement is in QPSK and 8PSK. 16PSK got worse:** the proposed model predicts 740 of 819 true 16PSK examples as 8PSK.
 
-### 5.3 Accuracy vs SNR (approximate values read from the plots)
+### 4.3 Accuracy vs SNR (approximate values read from the plots)
 
 | SNR (dB) | -1 | 1 | 3 | 5 | 7 | 9 | 11 | 13 | 15 | 17 | 19 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
