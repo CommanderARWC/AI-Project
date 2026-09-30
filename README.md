@@ -7,23 +7,6 @@ Deep-learning classification of 9 digital modulation types from raw I/Q samples,
 | Given CNN | 78.44% |
 | Proposed CNN + BiLSTM + Transformer | **87.43%** |
 
-> **Read this first:** the gain comes almost entirely from QPSK and 8PSK. **16PSK is still not solved** (about 6% correct). See [Results](#5-results) and [Limitations](#7-limitations-and-honest-caveats).
-
----
-
-## Table of contents
-
-1. [Project overview](#1-project-overview)
-2. [Dataset](#2-dataset)
-3. [Models](#3-models)
-4. [How to run](#4-how-to-run)
-5. [Results](#5-results)
-6. [Discussion](#6-discussion)
-7. [Limitations and honest caveats](#7-limitations-and-honest-caveats)
-8. [Next steps](#8-next-steps)
-9. [Repository structure](#9-repository-structure)
-10. [Tech stack and environment](#10-tech-stack-and-environment)
-
 ---
 
 ## 1. Project overview
@@ -159,33 +142,6 @@ What each stage is for:
 | Saves figures | No (`plt.show()` only) | Yes (`.png` files) |
 
 Because the split seeds differ, the two models were not tested on exactly the same 7,425 examples. Fixing one shared seed is recommended for a strictly fair comparison.
-
----
-
-## 4. How to run
-
-### 4.1 Install
-
-```bash
-pip install numpy h5py matplotlib scikit-learn torch
-```
-
-A CUDA build of PyTorch is optional but recommended. Results in this README were produced on an NVIDIA Quadro P2000.
-
-### 4.2 Steps
-
-```bash
-# 1. Generate the dataset (creates modulation_dataset2.h5)
-python Dataset.py
-
-# 2. Train and evaluate the baseline CNN
-python Given_Model.py
-
-# 3. Train and evaluate the hybrid model
-python Proposed_Model.py
-```
-
-> **Warning:** both model scripts end with `torch.save(model, "model_weights.pt")`. Running the second script **overwrites** the first script's file. Rename one of the output paths (for example `given_model.pt` and `proposed_model.pt`) before running both.
 
 ---
 
