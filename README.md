@@ -218,34 +218,13 @@ Improvement on the same dataset: **+8.99 percentage points**.
 
 **The whole improvement is in QPSK and 8PSK. 16PSK got worse:** the proposed model predicts 740 of 819 true 16PSK examples as 8PSK.
 
-### 5.3 Confusion matrices
-
-**Given CNN**
-
-![Given model confusion matrix](results/given_confusion_matrix.png)
-
-**Proposed hybrid**
-
-![Proposed model confusion matrix](results/proposed_confusion_matrix.png)
-
-### 5.4 Accuracy vs SNR (approximate values read from the plots)
+### 5.3 Accuracy vs SNR (approximate values read from the plots)
 
 | SNR (dB) | -1 | 1 | 3 | 5 | 7 | 9 | 11 | 13 | 15 | 17 | 19 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Given CNN (%) | 78 | 78 | 80 | 77 | 79 | 77 | 78 | 77 | 77 | 82 | 79 |
 | Proposed (%) | 80 | 83 | 86 | 86 | 88 | 88 | 90 | 90 | 90 | 89 | 92 |
 
-Each SNR point has about 675 test examples, so a single point has roughly +/-1.6 percentage points of sampling noise. Read the trend, not individual points.
-
-![Given model accuracy vs SNR](results/given_accuracy_vs_snr.png)
-
-![Proposed model accuracy vs SNR](results/proposed_accuracy_vs_snr.png)
-
-### 5.5 Training curves
-
-![Given model loss](results/given_loss_vs_epoch.png)
-
-![Proposed model loss](results/proposed_loss_vs_epoch.png)
 
 - **Given CNN:** train loss plateaus at about 0.34 and validation loss at about 0.40, with a spike at epoch 11.
 - **Proposed:** both losses fall to about 0.19-0.20, with a spike at epoch 8. Validation accuracy was still rising at the end (87.99% at epoch 14), so training was probably stopped early.
