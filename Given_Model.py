@@ -274,7 +274,7 @@ print(f"\nTest Accuracy: {accuracy:.2f}%")
 cm = confusion_matrix(all_labels, all_preds)
 
 mod_names = [
-    "OOK", "ASK", "BPSK", "QPSK", "8PSK", "16PSK", "BFSK", "4FSK", "8FSK"
+    "OOK", "ASK", "BPSK", "QPSK", "8PSK", "BFSK", "4FSK", "8FSK"
 ]
 
 plt.figure(figsize=(10, 8))
