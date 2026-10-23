@@ -1,5 +1,4 @@
 # Automatic Modulation Classification (AMC) under Simulated Channel Impairments
----
 
 ## 1. Project overview
 
