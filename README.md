@@ -2,7 +2,7 @@
 
 Deep-learning classification of 8 digital modulation types from raw I/Q samples, comparing a **1D CNN baseline** against a **CNN + BiLSTM + Transformer** hybrid on the same custom-generated dataset.
 
-| Model | Test accuracy (this run) |
+| Model | Test accuracy |
 |---|---:|
 | Existing CNN | 87.42% |
 | Proposed CNN + BiLSTM + Transformer | **96.30%** |
