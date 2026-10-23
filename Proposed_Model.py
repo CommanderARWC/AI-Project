@@ -1,230 +1,207 @@
-import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
 import h5py
+import numpy as np
+import matplotlib.pyplot as plt
+from torch.utils.data import Dataset, DataLoader
+from sklearn.metrics import confusion_matrix
+from collections import defaultdict
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Device:", device)
+if torch.cuda.is_available():
+    print("GPU:", torch.cuda.get_device_name(0))
+class ModulationH5Dataset(Dataset):
+    def __init__(self, file_path, indices):
+        self.file_path = file_path
+        self.indices = indices
+        self.h5_file = None
 
-# =====================================================
-# Parameters
-# =====================================================
+    def __len__(self):
+        return len(self.indices)
 
-NUM_SAMPLES = 1024
-SAMPLES_PER_SYMBOL = 8
-NUM_SYMBOLS = NUM_SAMPLES // SAMPLES_PER_SYMBOL
-
-NUM_EXAMPLES = 500  # Per modulation per SNR
-
-SNR_VALUES = np.arange(-1, 21, 2)
-
-MODULATIONS = [
-    "OOK",
-    "ASK",
-    "BPSK",
-    "QPSK",
-    "8PSK",
-    "BFSK",
-    "4FSK",
-    "8FSK"
-]
-
-LABEL_MAP = {mod: i for i, mod in enumerate(MODULATIONS)}
-
-# =====================================================
-# Pulse Shaping: Root Raised Cosine (RRC)
-# =====================================================
-
-RRC_BETA = 0.35   # roll-off factor
-RRC_SPAN = 6      # filter span in symbols
-
-def rrc_filter(beta, span, sps):
-    """Generate Root Raised Cosine filter taps."""
-    N = span * sps
-    t = (np.arange(-N / 2, N / 2 + 1)) / sps  
-    h = np.zeros_like(t)
-
-    for i, ti in enumerate(t):
-        if np.isclose(ti, 0.0):
-            h[i] = 1.0 - beta + 4 * beta / np.pi
-        elif beta != 0 and np.isclose(abs(ti), 1 / (4 * beta)):
-            h[i] = (beta / np.sqrt(2)) * (
-                ((1 + 2 / np.pi) * np.sin(np.pi / (4 * beta)))
-                + ((1 - 2 / np.pi) * np.cos(np.pi / (4 * beta)))
-            )
-        else:
-            numerator = np.sin(np.pi * ti * (1 - beta)) + \
-                4 * beta * ti * np.cos(np.pi * ti * (1 + beta))
-            denominator = np.pi * ti * (1 - (4 * beta * ti) ** 2)
-            h[i] = numerator / denominator
-
-    h = h / np.sqrt(np.sum(h ** 2))  
-    return h
-
-_RRC_TAPS = rrc_filter(RRC_BETA, RRC_SPAN, SAMPLES_PER_SYMBOL)
-_FILTER_DELAY = (len(_RRC_TAPS) - 1) // 2
-
-def pulse_shape(symbols, sps=SAMPLES_PER_SYMBOL):
-    """Upsample and apply RRC pulse shaping."""
-    upsampled = np.zeros(len(symbols) * sps, dtype=complex)
-    upsampled[::sps] = symbols
-    shaped = np.convolve(upsampled, _RRC_TAPS)
-    
-    start = _FILTER_DELAY
-    end = start + NUM_SAMPLES
-    return shaped[start:end]
-
-# =====================================================
-# Linear/PSK Modulation Functions 
-# =====================================================
-
-def ook():
-    bits = np.random.randint(0, 2, NUM_SYMBOLS)
-    return pulse_shape(bits.astype(complex))
-
-def ask():
-    bits = np.random.randint(0, 2, NUM_SYMBOLS)
-    amplitudes = (2 * bits + 1).astype(complex)
-    return pulse_shape(amplitudes)
-
-def bpsk():
-    bits = np.random.randint(0, 2, NUM_SYMBOLS)
-    return pulse_shape((2 * bits - 1).astype(complex))
-
-def qpsk():
-    symbols_idx = np.random.randint(0, 4, NUM_SYMBOLS)
-    phase = np.pi / 4 + symbols_idx * np.pi / 2
-    return pulse_shape(np.exp(1j * phase))
-
-def psk8():
-    symbols_idx = np.random.randint(0, 8, NUM_SYMBOLS)
-    phase = symbols_idx * 2 * np.pi / 8
-    return pulse_shape(np.exp(1j * phase))
-
-# =====================================================
-# FSK Modulation Functions 
-# =====================================================
-
-def _continuous_phase_fsk(symbols, frequencies, sps=SAMPLES_PER_SYMBOL):
-    freq_per_symbol = frequencies[symbols]             
-    freq_per_sample = np.repeat(freq_per_symbol, sps)    
-    phase = 2 * np.pi * np.cumsum(freq_per_sample)
-    return np.exp(1j * phase)
-
-def bfsk():
-    symbols = np.random.randint(0, 2, NUM_SYMBOLS)
-    frequencies = np.array([1, 3]) / SAMPLES_PER_SYMBOL
-    return _continuous_phase_fsk(symbols, frequencies)
-
-def fsk4():
-    symbols = np.random.randint(0, 4, NUM_SYMBOLS)
-    frequencies = np.array([1, 2, 3, 4]) / SAMPLES_PER_SYMBOL
-    return _continuous_phase_fsk(symbols, frequencies)
-
-def fsk8():
-    symbols = np.random.randint(0, 8, NUM_SYMBOLS)
-    frequencies = np.arange(1, 9) / SAMPLES_PER_SYMBOL
-    return _continuous_phase_fsk(symbols, frequencies)
-
-GENERATORS = {
-    "OOK": ook, "ASK": ask, "BPSK": bpsk, "QPSK": qpsk,
-    "8PSK": psk8, "BFSK": bfsk, "4FSK": fsk4, "8FSK": fsk8
-}
-
-# =====================================================
-# Channel Impairments
-# =====================================================
-
-def apply_channel_impairments(signal):
-    """Applies time-varying Rayleigh multipath fading, Doppler spread, and CFO."""
-    N = len(signal)
-    t = np.arange(N)
-    
-    # 1. Time-Varying Rayleigh Fading with Doppler Spread
-    num_taps = np.random.randint(2, 5)
-    tap_powers = np.exp(-np.arange(num_taps))
-    tap_powers /= np.sum(tap_powers)  # Normalize power profile
-    
-    # Max normalized Doppler shift (fd * Ts) simulating relative motion
-    max_doppler = np.random.uniform(1e-5, 1e-3) 
-    
-    faded_signal = np.zeros(N + num_taps - 1, dtype=complex)
-    
-    for i in range(num_taps):
-        # Rayleigh distributed amplitude and uniform phase for this specific tap
-        h_i = (np.random.randn() + 1j * np.random.randn()) * np.sqrt(tap_powers[i] / 2)
+    def __getitem__(self, idx):
+        if self.h5_file is None:
+            self.h5_file = h5py.File(self.file_path, "r")
+        real_idx = self.indices[idx]
+        x = self.h5_file["X"][real_idx]
+        y = self.h5_file["Y"][real_idx]
+        snr = self.h5_file["SNR"][real_idx] 
+        power = np.mean(x ** 2)
+        x = x / np.sqrt(power + 1e-12)
         
-        # Independent Doppler shift for this path creates the Doppler Spread
-        doppler_i = np.random.uniform(-max_doppler, max_doppler)
-        
-        # Time-varying tap (rotates continuously over the 1024 samples)
-        tap_time_varying = h_i * np.exp(1j * 2 * np.pi * doppler_i * t)
-        
-        # Apply this specific delayed, fading, and phase-shifting path to the signal
-        faded_signal[i:i+N] += signal * tap_time_varying
-        
-    # Truncate back to original 1024-sample length
-    delay = (num_taps - 1) // 2
-    signal = faded_signal[delay:delay+N]
-    
-    # 2. Carrier Frequency Offset (CFO) and Global Phase Offset
-    # Simulates mismatched local oscillators
-    phase_offset = np.random.uniform(0, 2 * np.pi)
-    cfo = np.random.uniform(-0.01, 0.01) 
-    frequency_drift = np.exp(1j * (2 * np.pi * cfo * t + phase_offset))
-    
-    return signal * frequency_drift
+        return (torch.tensor(x, dtype=torch.float32), 
+                torch.tensor(y, dtype=torch.long), 
+                torch.tensor(snr, dtype=torch.float32))
+FILE_PATH = "modulation_dataset2.h5"
+with h5py.File(FILE_PATH, "r") as f:
+    total_samples = f["X"].shape[0]
+print(f"Total Dataset Size: {total_samples}")
+np.random.seed(42)
+all_indices = np.random.permutation(total_samples)
+train_end = int(0.70 * total_samples)
+val_end = int(0.85 * total_samples)
+train_indices = all_indices[:train_end]
+val_indices = all_indices[train_end:val_end]
+test_indices = all_indices[val_end:]
+print(f"Train: {len(train_indices)}  Val: {len(val_indices)}  Test: {len(test_indices)}")
+train_loader = DataLoader(ModulationH5Dataset(FILE_PATH, train_indices), batch_size=256, shuffle=True, num_workers=0)
+val_loader = DataLoader(ModulationH5Dataset(FILE_PATH, val_indices), batch_size=256, shuffle=False, num_workers=0)
+test_loader = DataLoader(ModulationH5Dataset(FILE_PATH, test_indices), batch_size=256, shuffle=False, num_workers=0)
 
-def add_awgn(signal, snr_db):
-    signal_power = np.mean(np.abs(signal) ** 2)
-    snr_linear = 10 ** (snr_db / 10)
-    noise_power = signal_power / snr_linear
-    noise = np.sqrt(noise_power / 2) * (np.random.randn(*signal.shape) + 1j * np.random.randn(*signal.shape))
-    return signal + noise
 
-# =====================================================
-# Dataset Generation
-# =====================================================
+class AMC_HybridNet(nn.Module):
+    def __init__(self, num_classes=8):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv1d(in_channels=2, out_channels=128, kernel_size=8),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.MaxPool1d(kernel_size=2),
+            nn.Conv1d(in_channels=128, out_channels=64, kernel_size=16),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.MaxPool1d(kernel_size=2),
+        )
+        self.lstm = nn.LSTM(input_size=64, hidden_size=128, num_layers=1, batch_first=True, bidirectional=True)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=256, nhead=8, dim_feedforward=512, dropout=0.3, batch_first=True)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=1)
+        self.pool = nn.AdaptiveAvgPool1d(1)
+        self.classifier = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Dropout(0.4),
+            nn.Linear(128, num_classes),
+        )
+    def forward(self, x):
+        x = self.features(x)
+        x = x.permute(0, 2, 1) 
+        x, _ = self.lstm(x) 
+        x = self.transformer(x)
+        x = x.permute(0, 2, 1) 
+        pooled = self.pool(x)         
+        pooled = torch.flatten(pooled, 1) 
+        out = self.classifier(pooled)
+        return out
+model = AMC_HybridNet(num_classes=8).to(device)
+loss_fn = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+epochs = 15
+train_losses = []
+val_losses = []
+val_accuracies = []
+best_val_acc = 0.0
+best_state = None
 
-if __name__ == "__main__":
-    X = []
-    Y = []
-    SNR = []
+for epoch in range(epochs):
+    model.train()
+    running_loss = 0
+    for batch_X, batch_Y, _ in train_loader:
+        batch_X, batch_Y = batch_X.to(device), batch_Y.to(device)
+        optimizer.zero_grad()
+        outputs = model(batch_X)
+        loss = loss_fn(outputs, batch_Y)
+        loss.backward()
+        optimizer.step()
+        running_loss += loss.item()
+    avg_train_loss = running_loss / len(train_loader)
+    train_losses.append(avg_train_loss)
+    model.eval()
+    val_loss = 0
+    val_correct = 0
+    val_total = 0
 
-    print("Generating Dataset with Rayleigh Fading, Doppler, & AWGN...\n")
+    with torch.no_grad():
+        for batch_X, batch_Y, _ in val_loader:
+            batch_X, batch_Y = batch_X.to(device), batch_Y.to(device)
+            outputs = model(batch_X)
+            loss = loss_fn(outputs, batch_Y)
+            val_loss += loss.item()
+            preds = torch.argmax(outputs, dim=1)
+            val_correct += (preds == batch_Y).sum().item()
+            val_total += batch_Y.size(0)
+    avg_val_loss = val_loss / len(val_loader)
+    val_acc = 100 * val_correct / val_total
 
-    for modulation in MODULATIONS:
-        print(f"Generating {modulation}...")
-        generator = GENERATORS[modulation]
-        label = LABEL_MAP[modulation]
+    val_losses.append(avg_val_loss)
+    val_accuracies.append(val_acc)
+    if val_acc > best_val_acc:
+        best_val_acc = val_acc
+        best_state = {k: v.clone() for k, v in model.state_dict().items()}
+    print(f"Epoch [{epoch+1}/{epochs}] Train Loss = {avg_train_loss:.4f}  Val Loss = {avg_val_loss:.4f}  Val Acc = {val_acc:.2f}%")
+if best_state is not None:
+    model.load_state_dict(best_state)
+    print(f"\nRestored best model (Val Acc = {best_val_acc:.2f}%)")
+model.eval()
+correct = 0
+total = 0
+all_preds = []
+all_labels = []
+all_snrs = []
 
-        for snr in SNR_VALUES:
-            for _ in range(NUM_EXAMPLES):
-                
-                # 1. Baseband Generation
-                signal = generator()
-                
-                # 2. Simulated Channel Effects (Rayleigh + Doppler + CFO)
-                signal = apply_channel_impairments(signal)
-                
-                # 3. Receiver Noise
-                signal = add_awgn(signal, snr)
+with torch.no_grad():
+    for batch_X, batch_Y, batch_SNR in test_loader:
+        batch_X, batch_Y = batch_X.to(device), batch_Y.to(device)
+        outputs = model(batch_X)
+        predictions = torch.argmax(outputs, dim=1)
+        correct += (predictions == batch_Y).sum().item()
+        total += batch_Y.size(0)
+        all_preds.extend(predictions.cpu().numpy())
+        all_labels.extend(batch_Y.cpu().numpy())
+        all_snrs.extend(batch_SNR.view(-1).numpy()) 
+accuracy = 100 * correct / total
+print(f"\nOverall Test Accuracy: {accuracy:.2f}%")
 
-                # Format as (2, 1024) for the CNN
-                iq = np.vstack((signal.real, signal.imag))
 
-                X.append(iq.astype(np.float32))
-                Y.append(label)
-                SNR.append(snr)
+plt.figure(figsize=(8, 6))
+plt.plot(train_losses, label='Train')
+plt.plot(val_losses, label='Validation')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.title('Train and Validation Loss vs. Epoch')
+plt.legend()
+plt.tight_layout()
+plt.savefig("loss_vs_epoch.png")
+plt.show()
+cm = confusion_matrix(all_labels, all_preds)
+mod_names = ["OOK", "ASK", "BPSK", "QPSK", "8PSK", "BFSK", "4FSK", "8FSK"]
+plt.figure(figsize=(10, 8))
+plt.imshow(cm, interpolation="nearest", cmap="viridis")
+plt.colorbar()
+plt.xticks(np.arange(len(mod_names)), mod_names, rotation=45)
+plt.yticks(np.arange(len(mod_names)), mod_names)
+plt.xlabel("Predicted Label")
+plt.ylabel("True Label")
+plt.title("Confusion Matrix (CNN + BiLSTM + Transformer)")
 
-    X = np.array(X, dtype=np.float32)
-    Y = np.array(Y, dtype=np.int64)
-    SNR = np.array(SNR, dtype=np.int32)
+for i in range(len(mod_names)):
+    for j in range(len(mod_names)):
+        plt.text(j, i, str(cm[i, j]), ha="center", va="center", color="white" if cm[i, j] < (cm.max()/2) else "black")
+plt.tight_layout()
+plt.savefig("confusion_matrix.png")
+plt.show()
+snr_accuracy = defaultdict(list)
 
-    print("\nDataset Created Successfully")
-    print("X Shape :", X.shape)
-    print("Y Shape :", Y.shape)
-    print("SNR Shape :", SNR.shape)
+for snr, true_label, pred_label in zip(all_snrs, all_labels, all_preds):
+    is_correct = (true_label == pred_label)
+    snr_accuracy[snr].append(is_correct)
+unique_snrs = sorted(snr_accuracy.keys())
+acc_per_snr = []
 
-    with h5py.File("modulation_dataset2.h5", "w") as f:
-        f.create_dataset("X", data=X)
-        f.create_dataset("Y", data=Y)
-        f.create_dataset("SNR", data=SNR)
+for snr in unique_snrs:
+    correct_count = sum(snr_accuracy[snr])
+    total_count = len(snr_accuracy[snr])
+    acc_per_snr.append(100.0 * correct_count / total_count)
 
-    print("\nDataset saved as modulation_dataset2.h5")
-    print("Done.")
+plt.figure(figsize=(8, 6))
+plt.plot(unique_snrs, acc_per_snr, marker='o', linestyle='-', color='b')
+plt.xlabel('SNR (dB)')
+plt.ylabel('Accuracy (%)')
+plt.title('Classification Accuracy vs. SNR')
+plt.grid(True)
+plt.tight_layout()
+plt.savefig("accuracy_vs_snr.png")
+plt.show()
+
+torch.save(model, "model_weights.pt")
+print("Model weights saved successfully as model_weights.pt!")
