@@ -177,7 +177,7 @@ Improvement on the same dataset: **+8.88 percentage points**, achieved with less
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Proposed (%) | ~90.2 | ~93.0 | ~94.4 | ~95.8 | ~97.6 | ~97.2 | ~97.8 | ~97.5 | ~98.4 | ~99.4 | ~98.8 |
 
-*(Note: Exact decimal values are approximated from the graphed results)*
+
 
 - Accuracy rises steadily with SNR, jumping from ~90% at -1 dB to above 98% at higher SNRs.
 - It peaks near 99% at 17 dB and largely levels off above 7 dB.
