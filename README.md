@@ -1,12 +1,4 @@
 # Automatic Modulation Classification (AMC) under Simulated Channel Impairments
-
-Deep-learning classification of 8 digital modulation types from raw I/Q samples, comparing a **1D CNN baseline** against a **CNN + BiLSTM + Transformer** hybrid on the same custom-generated dataset.
-
-| Model | Test accuracy (this run) |
-|---|---:|
-| Given CNN | 87.42% |
-| Proposed CNN + BiLSTM + Transformer | **96.30%** |
-
 ---
 
 ## 1. Project overview
